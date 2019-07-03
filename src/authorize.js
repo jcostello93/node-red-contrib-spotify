@@ -9,7 +9,50 @@ module.exports = function (RED) {
 
         this.name = config.name;
         this.scope = config.scope;
+
+	const ID = this.id;
+	
+	const creds = RED.nodes.getCredentials(ID);
+
+	if(!creds.interval){
+		const interval = setInterval(function(interval) {
+			try {
+				const credentials = RED.nodes.getCredentials(ID);
+		
+				const spotifyApi = new SpotifyWebApi({
+					clientId: credentials.clientId,
+					clientSecret: credentials.clientSecret,
+					redirectUri: credentials.callback
+		        	});
+				
+				// Set the access token and refresh token
+				spotifyApi.setAccessToken(credentials.accessToken);
+				spotifyApi.setRefreshToken(credentials.refreshToken);  
+		
+				// Refresh token and print the new time to expiration.
+		    		spotifyApi.refreshAccessToken().then(function(data) {
+		        		RED.log.info(RED.log._('SpotifyAPI - Refreshed token'));
+					credentials.accessToken = data.body.access_token;
+		            		credentials.expireTime = data.body.expires_in + Math.floor(new Date().getTime() / 1000);
+		
+					RED.log.info(RED.log._('SpotifyAPI - Access token is ' + credentials.accessToken));
+					RED.log.info(RED.log._('SpotifyAPI - Expire time is ' + data.body.expires_in));
+					RED.nodes.addCredentials(ID, credentials);
+		      		},
+		      		function(err) {
+					RED.log.error(RED.log._('SpotifyAPI - Could not refresh the token!' + err.message));        
+	      			});
+			} catch (err) {
+	                	RED.log.error(RED.log._('SpotifyAPI - ' + err));
+				clearInterval(interval);
+	            	}
+		}, 1200000);
+		
+		creds.interval = String(interval);
+		RED.nodes.addCredentials(ID, creds);
+    	}
     }
+
     RED.nodes.registerType("spotify-auth", AuthNode, {
         credentials: {
             name: { type: 'text' },
@@ -17,7 +60,8 @@ module.exports = function (RED) {
             clientSecret: { type: 'password' },
             accessToken: { type: 'password' },
             refreshToken: { type: 'password' },
-            expireTime: { type: 'password' }
+            expireTime: { type: 'password' },
+	    interval: { type: 'password' }
         }
     });
 
@@ -75,9 +119,9 @@ module.exports = function (RED) {
             clientSecret: credentials.clientSecret,
             redirectUri: credentials.callback
         });
-
+	
         spotifyApi.authorizationCodeGrant(req.query.code).then(data => {
-            credentials.accessToken = data.body.access_token;
+	    credentials.accessToken = data.body.access_token;
             credentials.refreshToken = data.body.refresh_token;
             credentials.expireTime = data.body.expires_in + Math.floor(new Date().getTime() / 1000);
             credentials.tokenType = data.body.token_type;
@@ -87,6 +131,9 @@ module.exports = function (RED) {
             delete credentials.callback;
             RED.nodes.addCredentials(node_id, credentials);
             res.send('spotify.authorized');
+            RED.log.info(RED.log._('SpotifyAPI - Access token is ' + credentials.accessToken));
+            RED.log.info(RED.log._('SpotifyAPI - Refresh token is ' + credentials.refreshToken));
+            RED.log.info(RED.log._('SpotifyAPI - Expire time is ' + data.body.expires_in));
         })
         .catch(error => {
             res.send('spotify.error.tokens');
