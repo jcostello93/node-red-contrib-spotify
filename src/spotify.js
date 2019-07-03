@@ -6,28 +6,25 @@ module.exports = function (RED) {
 
         const node = this;
         node.config = RED.nodes.getNode(config.auth);
-        node.api = config.api;
-
-        const spotifyApi = new SpotifyWebApi({
-            clientId: node.config.credentials.clientId,
-            clientSecret: node.config.credentials.clientSecret,
-            accessToken: node.config.credentials.accessToken,
-            refreshToken: node.config.credentials.refreshToken
-        });
+        node.api = config.api;	
 
         node.on('input', function (msg) {
-            if ((new Date().getTime() / 1000) > node.config.credentials.expireTime) {
-                refreshToken().then(() => {
-                    handleInput(msg);
-                });
-            } else {
-                handleInput(msg);
-            }
+            	handleInput(msg);
+            
         });
 
         function handleInput(msg) {
             try {
-                let params = (msg.params) ? msg.params : [];
+                const credentials = RED.nodes.getCredentials(config.auth);
+
+		const spotifyApi = new SpotifyWebApi({
+            		clientId: credentials.clientId,
+            		clientSecret: credentials.clientSecret,
+            		accessToken: credentials.accessToken,
+            		refreshToken: credentials.refreshToken
+        	});
+
+		let params = (msg.params) ? msg.params : [];
                 // Reduce params to 1 less than the function expects, as the last param is the callback
                 params = params.slice(0, spotifyApi[node.api].length - 1);
 
@@ -42,25 +39,6 @@ module.exports = function (RED) {
                 msg.err = err;
                 node.send(msg);
             }
-        }
-
-        function refreshToken() {
-            return new Promise((resolve, reject) => {
-                spotifyApi.refreshAccessToken()
-                .then(data => {
-                    node.config.credentials.expireTime = data.body.expires_in + Math.floor(new Date().getTime() / 1000);
-                    node.config.credentials.accessToken = data.body.access_token;
-                    
-                    RED.nodes.addCredentials(config.auth, node.config.credentials);
-
-                    spotifyApi.setAccessToken(data.body.access_token);
-
-                    resolve();
-                })
-                .catch(error => {
-                    reject(error);
-                });
-            });
         }
     }
     RED.nodes.registerType("spotify", SpotifyNode);
