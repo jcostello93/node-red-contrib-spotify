@@ -18,6 +18,8 @@ module.exports = function (RED) {
 		const interval = setInterval(function(interval) {
 			try {
 				const credentials = RED.nodes.getCredentials(ID);
+				
+				RED.log.info(RED.log._("credentials: " + credentials));
 		
 				const spotifyApi = new SpotifyWebApi({
 					clientId: credentials.clientId,
